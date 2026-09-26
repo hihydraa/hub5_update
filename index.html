@@ -2,193 +2,396 @@
 <html>
 <head>
 <meta charset="utf-8">
-<title>KC Location Analysis Map</title>
+<title>KC Location Analysis Leaflet</title>
+
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css"/>
+
 <style>
-html,body,#map{height:100%;margin:0}
-#map{width:100%}
+html,body,#map{
+    height:100%;
+    margin:0;
+}
+
+#map{
+    width:100%;
+}
+
 #dashboard{
-position:absolute;top:10px;left:10px;z-index:999;
-background:#fff;padding:15px;border-radius:10px;
-width:270px;font-size:14px;box-shadow:0 0 10px #999
+    position:absolute;
+    z-index:999;
+    top:10px;
+    left:10px;
+    width:280px;
+    background:white;
+    padding:15px;
+    border-radius:10px;
+    box-shadow:0 0 10px #888;
+    font-family:Arial;
+    font-size:14px;
 }
+
 button{
-width:100%;margin:4px 0;padding:8px;
-border:0;border-radius:5px;background:#1565c0;color:white;cursor:pointer
+    width:100%;
+    padding:8px;
+    margin:4px 0;
+    border:0;
+    border-radius:5px;
+    background:#1565c0;
+    color:white;
+    cursor:pointer;
 }
-button:hover{background:#0d47a1}
 </style>
+
 </head>
 
 <body>
 
 <div id="dashboard">
+
 <b>KC Location Analysis</b>
-<hr>
-<b>Scenario</b>
-<button onclick="scenario('all')">ทั้งหมด</button>
-<button onclick="scenario('kc')">KC Existing</button>
-<button onclick="scenario('target')">พื้นที่เป้าหมาย</button>
 
 <hr>
-<div id="analysis">เลือก Scenario</div>
+
+<button onclick="showScenario('all')">
+ทั้งหมด
+</button>
+
+<button onclick="showScenario('kc')">
+KC Existing
+</button>
+
+<button onclick="showScenario('target')">
+พื้นที่เป้าหมาย
+</button>
+
+<hr>
+
+<button onclick="toggleGeo('province')">
+เปิด/ปิด จังหวัด
+</button>
+
+<button onclick="toggleGeo('district')">
+เปิด/ปิด อำเภอ
+</button>
+
+<div id="info">
+พร้อมใช้งาน
 </div>
+
+</div>
+
 
 <div id="map"></div>
 
+
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
 
 <script>
 
-const map=L.map('map').setView([15.8,102.8],8);
+
+const map=L.map('map')
+.setView([15.8,102.8],8);
+
 
 L.tileLayer(
 'https://tile.openstreetmap.org/{z}/{x}/{y}.png'
 ).addTo(map);
 
 
-const target=[
-["ด่านขุนทด-ด่านขุนทด",15.229674,101.779315],
-["ด่านขุนทด-หนองบัวตะเกียด",15.293108657176782,101.81087126460163],
-["ด่านขุนทด-หนองกราด",15.35786365252799,101.68660911066699],
-["โนนสูง-ธารปราสาท",15.222493202715457,102.36249218396031],
-["สีคิ้ว",14.918396902178808,101.69588802390821],
-["ประทาย",15.548779864748118,102.70333262449823],
-["บัวใหญ่",15.611245466671665,102.44792294125068]
-];
-
-const stations=[
-["ST",16.381029272179042,103.34881852164082,"red"],
-["KN",16.71600409911031,103.08205194412724,"green"],
-["MUK",16.43599207530131,104.61612804232725,"purple"],
-["WNN",17.6293190999291,103.7676571040772,"orange"]
-];
-
 
 let layers={
+
 targetPoint:L.layerGroup(),
+
 targetRadius:L.layerGroup(),
+
 stationPoint:L.layerGroup(),
+
 stationRadius:L.layerGroup()
+
 };
 
 
-target.forEach(x=>{
+let geo={
 
-L.circleMarker([x[1],x[2]],{
-radius:7,color:"#1565c0",fillOpacity:1
-})
-.bindPopup(x[0])
+province:null,
+
+district:null
+
+};
+
+
+
+const targets=[
+
+["ด่านขุนทด",15.229674,101.779315],
+["หนองบัวตะเกียด",15.293108657176782,101.81087126460163],
+["หนองกราด",15.35786365252799,101.68660911066699],
+["ธารปราสาท",15.222493202715457,102.36249218396031],
+["สีคิ้ว",14.918396902178808,101.69588802390821],
+["ประทาย",15.548779864748118,102.70333262449823],
+["บัวใหญ่",15.611245466671665,102.44792294125068]
+
+];
+
+
+const stations=[
+
+["ST",16.381029272179042,103.34881852164082,"red"],
+
+["KN",16.71600409911031,103.08205194412724,"green"],
+
+["MUK",16.43599207530131,104.61612804232725,"purple"],
+
+["WNN",17.6293190999291,103.7676571040772,"orange"]
+
+];
+
+
+
+targets.forEach(t=>{
+
+
+L.circleMarker(
+[t[1],t[2]],
+{
+radius:7,
+color:"#0066ff",
+fillOpacity:1
+}
+)
+.bindPopup(t[0])
 .addTo(layers.targetPoint);
 
 
-L.circle([x[1],x[2]],{
+L.circle(
+[t[1],t[2]],
+{
 radius:80000,
-color:"#1565c0",
-fillOpacity:.12
-})
+color:"#0066ff",
+fillOpacity:.15
+}
+)
 .addTo(layers.targetRadius);
+
 
 });
 
 
-stations.forEach(x=>{
 
-L.circleMarker([x[1],x[2]],{
+stations.forEach(s=>{
+
+
+L.circleMarker(
+[s[1],s[2]],
+{
 radius:9,
-color:x[3],
-fillColor:x[3],
+color:s[3],
+fillColor:s[3],
 fillOpacity:1
-})
-.bindPopup("KC Petroleum "+x[0])
+}
+)
+.bindPopup("KC "+s[0])
 .addTo(layers.stationPoint);
 
 
-L.circle([x[1],x[2]],{
+
+L.circle(
+[s[1],s[2]],
+{
 radius:80000,
-color:x[3],
-fillColor:x[3],
+color:s[3],
+fillColor:s[3],
 fillOpacity:.12
-})
+}
+)
 .addTo(layers.stationRadius);
 
+
+
 });
 
 
-let geoLayers={};
+
+
+// โหลด GeoJSON ตามชื่อไฟล์ใหม่
+
 
 fetch("data/thailand_province.geojson")
+
 .then(r=>r.json())
-.then(d=>{
-geoLayers.province=L.geoJSON(d,{
-style:{color:"#555",weight:1,fillOpacity:.05}
+
+.then(data=>{
+
+
+geo.province=L.geoJSON(data,{
+
+style:{
+color:"#0057b8",
+weight:1,
+fillOpacity:0.05
+},
+
+
+onEachFeature:(f,l)=>{
+
+l.bindPopup(
+
+"จังหวัด : "+
+(
+f.properties.NAME_1 ||
+f.properties.name ||
+"ไม่พบชื่อ"
+)
+
+);
+
+}
+
+
 });
+
+
 });
+
+
+
 
 
 fetch("data/thailand_amphoe.geojson")
+
 .then(r=>r.json())
-.then(d=>{
-geoLayers.amphoe=L.geoJSON(d,{
-style:{color:"#999",weight:.5,fillOpacity:0}
-});
-});
+
+.then(data=>{
 
 
-function clear(){
-Object.values(layers).forEach(l=>map.removeLayer(l));
-if(geoLayers.province) map.removeLayer(geoLayers.province);
-if(geoLayers.amphoe) map.removeLayer(geoLayers.amphoe);
+geo.district=L.geoJSON(data,{
+
+style:{
+color:"#777",
+weight:.5,
+fillOpacity:0
+},
+
+
+onEachFeature:(f,l)=>{
+
+l.bindPopup(
+
+"อำเภอ : "+
+(
+f.properties.NAME_2 ||
+f.properties.name ||
+"ไม่พบชื่อ"
+)
+
+);
+
 }
 
 
-function scenario(type){
+});
 
-clear();
 
-if(type=="all"){
-Object.values(layers).forEach(l=>l.addTo(map));
-if(geoLayers.province)geoLayers.province.addTo(map);
-if(geoLayers.amphoe)geoLayers.amphoe.addTo(map);
+});
 
-document.getElementById("analysis").innerHTML=
-"แสดงทุกพื้นที่";
+
+
+
+
+function clearAll(){
+
+Object.values(layers)
+.forEach(x=>map.removeLayer(x));
+
 }
 
 
-if(type=="kc"){
+
+function showScenario(type){
+
+clearAll();
+
+
+if(type==="all"){
+
+Object.values(layers)
+.forEach(x=>x.addTo(map));
+
+
+if(geo.province)
+geo.province.addTo(map);
+
+if(geo.district)
+geo.district.addTo(map);
+
+
+document.getElementById("info").innerHTML=
+"แสดงทั้งหมด";
+
+}
+
+
+
+if(type==="kc"){
 
 layers.stationPoint.addTo(map);
 layers.stationRadius.addTo(map);
 
-document.getElementById("analysis").innerHTML=
-"<b>KC Existing</b><br>ST / KN / MUK / WNN";
+document.getElementById("info").innerHTML=
+"KC Existing : ST KN MUK WNN";
 
 }
 
 
-if(type=="target"){
+
+if(type==="target"){
 
 layers.targetPoint.addTo(map);
 layers.targetRadius.addTo(map);
 
-document.getElementById("analysis").innerHTML=
-"<b>พื้นที่เป้าหมาย</b><br>Radius 80 km";
+document.getElementById("info").innerHTML=
+"พื้นที่เป้าหมาย Radius 80 km";
 
 }
 
 }
 
 
-L.control.layers(null,{
-"จังหวัด":geoLayers.province,
-"อำเภอ":geoLayers.amphoe
-}).addTo(map);
 
 
-scenario("all");
+function toggleGeo(type){
+
+if(type==="province"){
+
+if(map.hasLayer(geo.province))
+map.removeLayer(geo.province);
+else
+geo.province.addTo(map);
+
+}
+
+
+if(type==="district"){
+
+if(map.hasLayer(geo.district))
+map.removeLayer(geo.district);
+else
+geo.district.addTo(map);
+
+}
+
+
+}
+
+
+
+showScenario("all");
+
 
 </script>
+
 
 </body>
 </html>
