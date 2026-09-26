@@ -321,6 +321,22 @@ body.print-mode .pt-label{
     border:.3mm solid #444;
 }
 
+.amp-label{
+    background:none;
+    border:0;
+}
+
+.amp-t{
+    position:absolute;
+    transform:translate(-50%,-50%);
+    white-space:nowrap;
+    font-family:Arial, "Noto Sans Thai", sans-serif;
+    font-size:3.8mm;
+    font-weight:600;
+    color:#37474f;
+    text-shadow:0 0 1.2mm #fff, 0 0 1.2mm #fff, 0 0 1.2mm #fff;
+}
+
 body.print-mode .leaflet-control-zoom{
     display:none;
 }
@@ -810,35 +826,66 @@ function hav(a,b){
     return 2*R*Math.asin(Math.sqrt(h));
 }
 
+// สีเฉพาะตอนพิมพ์ : จุดเป้าหมายแต่ละจุดใช้สีต่างกัน (สาขา KC ใช้สีเดิม)
+const PCOL = {
+    "ด่านขุนทด":"#1565c0",
+    "หนองบัวตะเกียด":"#6d4c41",
+    "หนองกราด":"#c2185b",
+    "สีคิ้ว":"#f9a825",
+    "ธารปราสาท":"#00838f",
+    "ประทาย":"#455a64",
+    "บัวใหญ่":"#827717",
+    "ปั๊มให้เช่า สีดา":"#8e24aa"
+};
+
+const FIT_PAD = [60,60];
+
 const SHEETS = [
     {
         title:"ภาพรวมพื้นที่เป้าหมาย และสาขา KC เดิม",
         sub:"ทุกจุด พร้อมวงรัศมี 80 กม.",
         main:i=>true,
         ring:i=>true,
-        fit:all=>unionBounds(all,true)
+        districts:false,
+        go:(main)=>map.fitBounds(unionBounds(main,true),
+                    {padding:[30,30], animate:false})
     },
     {
-        title:"กลุ่ม A : ด่านขุนทด – หนองบัวตะเกียด – หนองกราด – สีคิ้ว",
-        sub:"3 จุดแรกอยู่ห่างกันไม่ถึง 20 กม. ถือเป็นโซนเดียวกัน",
-        main:i=>CL_A.includes(i.name),
-        ring:i=>CL_A.includes(i.name),
-        fit:main=>unionBounds(main,true)
+        title:"กลุ่ม A : ด่านขุนทด – หนองบัวตะเกียด – หนองกราด – สีคิ้ว (พร้อมสาขา ST, KN)",
+        sub:"วงแต่ละจุดใช้สีต่างกัน • ระดับซูมเท่ากับกรอบกลุ่ม A • รัศมีสาขา ST/KN แสดงเฉพาะส่วนที่อยู่ในกรอบ",
+        main:i=>CL_A.includes(i.name) || i.name==="ST" || i.name==="KN",
+        ring:i=>CL_A.includes(i.name) || i.name==="ST" || i.name==="KN",
+        districts:false,
+        go:(main)=>{
+            const A = main.filter(i=>CL_A.includes(i.name));
+            // ระดับซูมของกรอบกลุ่ม A (เต็มวง) เป็นเพดาน
+            const z0 = map.getBoundsZoom(unionBounds(A,true), false, L.point(60,60));
+            // แล้วเลื่อนกรอบให้เห็นจุดของ ST, KN ด้วย โดยไม่ซูมออกเกินจำเป็น
+            map.fitBounds(unionBounds(main,false),
+                {padding:FIT_PAD, maxZoom:z0, animate:false});
+        }
     },
     {
-        title:"กลุ่ม B : บัวใหญ่ – สีดา – ประทาย – ธารปราสาท",
-        sub:"แสดงร่วมกับสาขา ST (ยางตลาด) เพื่อดูการทับซ้อน",
+        title:"กลุ่ม B : บัวใหญ่ – สีดา – ประทาย – ธารปราสาท (พร้อมสาขา ST)",
+        sub:"วงแต่ละจุดใช้สีต่างกัน • รัศมีสาขา ST แสดงเฉพาะส่วนที่อยู่ในกรอบ",
         main:i=>CL_B.includes(i.name) || i.name==="ST",
         ring:i=>CL_B.includes(i.name) || i.name==="ST",
-        fit:main=>unionBounds(main,true)
+        districts:false,
+        go:(main)=>{
+            const B = main.filter(i=>CL_B.includes(i.name));
+            const st = main.filter(i=>i.name==="ST");
+            const b = unionBounds(B,true).extend(unionBounds(st,false));
+            map.fitBounds(b,{padding:[30,30], animate:false});
+        }
     },
     {
-        title:"การทับซ้อนกับสาขา KC เดิม",
-        sub:"แสดงวงรัศมีเฉพาะสาขาเดิม เพื่อดูว่าจุดเป้าหมายอยู่ในเขตขายของสาขาใด",
-        main:i=>true,
+        title:"การทับซ้อนกับสาขา KC เดิม (ระดับอำเภอ)",
+        sub:"แสดงรัศมีสาขา ST, KN เฉพาะส่วนที่อยู่ในกรอบ • จุดเป้าหมายแสดงเป็นจุด • มีชื่ออำเภอกำกับ",
+        main:i=>i.group==="target" || i.name==="ST" || i.name==="KN",
         ring:i=>i.group==="station",
-        fit:all=>unionBounds(all.filter(i=>i.group==="station"),true)
-                 .extend(unionBounds(all.filter(i=>i.group==="target"),false))
+        districts:true,
+        go:(main)=>map.fitBounds(unionBounds(main,false),
+                    {padding:[70,70], animate:false})
     }
 ];
 
@@ -912,13 +959,15 @@ function exitPrint(){
     if(st) st.remove();
 
     map.options.zoomSnap = 1;
+    updateDistrictLabels(false);
 
     items.forEach((it,k)=>{
         it.show = saved.items[k].show;
         it.ring = saved.items[k].ring;
         it.marker.setRadius(it.r0);
-        it.marker.setStyle({fillOpacity:1});
-        it.circle.setStyle({fillOpacity:it.fill0, weight:3});
+        it.marker.setStyle({color:it.color, fillColor:it.color, fillOpacity:1});
+        it.circle.setStyle({color:it.color, fillColor:it.color,
+                            fillOpacity:it.fill0, weight:3});
         it.marker.setTooltipContent(it.label0);
         const tip = it.marker.getTooltip();
         tip.options.direction = "right";
@@ -951,9 +1000,11 @@ function applySheet(n){
         it.ctx = false;
         it.show = !!S.main(it);
         it.ring = it.show && !!S.ring(it);
+        it.pcolor = PCOL[it.name] || it.color;
         it.marker.setRadius(it.r0*1.5);
-        it.marker.setStyle({fillOpacity:1});
-        it.circle.setStyle({fillOpacity:.06, weight:2.5});
+        it.marker.setStyle({color:it.pcolor, fillColor:it.pcolor, fillOpacity:1});
+        it.circle.setStyle({color:it.pcolor, fillColor:it.pcolor,
+                            fillOpacity:.06, weight:2.5});
         it.marker.setTooltipContent(labelText(it));
     });
 
@@ -971,8 +1022,7 @@ function applySheet(n){
     buildFooter(main);
     map.invalidateSize({animate:false});
     refreshAll();
-    map.fitBounds(S.fit(main.length ? main : items),
-                  {padding:[30,30], animate:false});
+    S.go(main);
 
     // 4) จุดอื่นที่บังเอิญอยู่ในกรอบ แสดงเป็นจุดอ้างอิง (ไม่มีวง)
     const view = map.getBounds();
@@ -985,7 +1035,40 @@ function applySheet(n){
         }
     });
     refreshAll();
+    updateDistrictLabels(S.districts);
     placeLabels();
+}
+
+// ชื่ออำเภอ (เฉพาะแผ่นที่ต้องการ) : วางที่กึ่งกลางอำเภอที่อยู่ในกรอบแผนที่
+let ampLayer = null;
+
+function updateDistrictLabels(on){
+
+    if(ampLayer){ map.removeLayer(ampLayer); ampLayer = null; }
+    if(!on || !geo.district) return;
+
+    ampLayer = L.layerGroup();
+    const view = map.getBounds();
+
+    geo.district.eachLayer(l=>{
+        const f = l.feature || {};
+        const name = (f.properties||{}).amp_th;
+        if(!name || !l.getBounds) return;
+        const c = l.getBounds().getCenter();
+        if(!view.contains(c)) return;
+        L.marker(c,{
+            interactive:false,
+            keyboard:false,
+            zIndexOffset:-1000,
+            icon:L.divIcon({
+                className:"amp-label",
+                html:'<span class="amp-t">'+name+'</span>',
+                iconSize:[0,0]
+            })
+        }).addTo(ampLayer);
+    });
+
+    ampLayer.addTo(map);
 }
 
 // จัดทิศของ label ไม่ให้ทับกัน (ไล่ทีละจุด เลือกทิศแรกที่ไม่ชน label/จุดอื่น)
@@ -1066,7 +1149,7 @@ function buildFooter(main){
         card.innerHTML =
             '<div class="qr">'+qrSvg(url)+'</div>' +
             '<div>' +
-                '<div class="nm"><span class="no" style="background:'+it.color+'">' +
+                '<div class="nm"><span class="no" style="background:'+(it.pcolor||it.color)+'">' +
                     (it.group==="station" ? "KC" : it.no) +
                 '</span>' + it.name + '</div>' +
                 '<div class="mut">'+it.lat.toFixed(5)+', '+it.lng.toFixed(5)+'</div>' +
