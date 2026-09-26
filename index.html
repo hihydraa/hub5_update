@@ -880,8 +880,8 @@ const SHEETS = [
     },
     {
         title:"การทับซ้อนกับสาขา KC เดิม (ระดับอำเภอ)",
-        sub:"แสดงรัศมีสาขา ST, KN เฉพาะส่วนที่อยู่ในกรอบ • จุดเป้าหมายแสดงเป็นจุด • มีชื่ออำเภอกำกับ",
-        main:i=>i.group==="target" || i.name==="ST" || i.name==="KN",
+        sub:"แสดงรัศมีสาขา ST, KN, MUK เฉพาะส่วนที่อยู่ในกรอบ • จุดเป้าหมายแสดงเป็นจุด • มีชื่ออำเภอกำกับ",
+        main:i=>i.group==="target" || i.name==="ST" || i.name==="KN" || i.name==="MUK",
         ring:i=>i.group==="station",
         districts:true,
         go:(main)=>map.fitBounds(unionBounds(main,false),
