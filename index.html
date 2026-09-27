@@ -855,7 +855,7 @@ const SHEETS = [
         sub:"วงแต่ละจุดใช้สีต่างกัน • ระดับซูมเท่ากับกรอบกลุ่ม A • รัศมีสาขา ST/KN แสดงเฉพาะส่วนที่อยู่ในกรอบ",
         main:i=>CL_A.includes(i.name) || i.name==="ST" || i.name==="KN",
         ring:i=>CL_A.includes(i.name) || i.name==="ST" || i.name==="KN",
-        districts:false,
+        districts:true,
         go:(main)=>{
             const A = main.filter(i=>CL_A.includes(i.name));
             // ระดับซูมของกรอบกลุ่ม A (เต็มวง) เป็นเพดาน
@@ -870,7 +870,7 @@ const SHEETS = [
         sub:"วงแต่ละจุดใช้สีต่างกัน • รัศมีสาขา ST แสดงเฉพาะส่วนที่อยู่ในกรอบ",
         main:i=>CL_B.includes(i.name) || i.name==="ST",
         ring:i=>CL_B.includes(i.name) || i.name==="ST",
-        districts:false,
+        districts:true,
         go:(main)=>{
             const B = main.filter(i=>CL_B.includes(i.name));
             const st = main.filter(i=>i.name==="ST");
