@@ -132,6 +132,43 @@ button.off{
     margin-top:6px;
 }
 
+.tp-input{
+    flex:1;
+    min-width:0;
+    padding:6px 7px;
+    margin:4px 0;
+    border:1px solid #bbb;
+    border-radius:5px;
+    font-size:13px;
+    box-sizing:border-box;
+}
+
+.tp-msg{
+    font-size:12px;
+    min-height:15px;
+    margin-top:2px;
+}
+
+.tp-msg.err{
+    color:#c62828;
+}
+
+.tp-msg.ok{
+    color:#2e7d32;
+}
+
+.temp-pin-label{
+    background:#e65100;
+    color:#fff;
+    border:1px solid #bf360c;
+    border-radius:4px;
+    padding:1px 6px;
+    font-family:Arial, "Noto Sans Thai", sans-serif;
+    font-size:12px;
+    font-weight:bold;
+    box-shadow:none;
+}
+
 /* ================= โครงหน้า (ปกติ = เต็มจอ) ================= */
 
 #stage,#sheet{
@@ -444,6 +481,22 @@ body.print-mode #northArrow{
 
 <button id="btnProvince" onclick="toggleGeo('province')">เปิด/ปิด จังหวัด</button>
 <button id="btnDistrict" onclick="toggleGeo('district')">เปิด/ปิด อำเภอ</button>
+
+<hr>
+
+<div class="group-title"><span>ปักหมุดชั่วคราว (ไม่บันทึก)</span></div>
+
+<div class="row2">
+<input id="tpLat" type="text" placeholder="Lat เช่น 15.5258" class="tp-input">
+<input id="tpLng" type="text" placeholder="Long เช่น 102.5433" class="tp-input">
+</div>
+
+<div class="row2">
+<button onclick="showTempPin()" style="background:#e65100">แสดงหมุด</button>
+<button id="tpClearBtn" onclick="clearTempPin()" style="background:#9e9e9e" disabled>ล้างหมุด</button>
+</div>
+
+<div id="tpMsg" class="tp-msg"></div>
 
 <hr>
 
@@ -1193,6 +1246,77 @@ window.addEventListener("beforeprint", ()=>{
         applySheet(curSheet);
     }
 });
+
+
+/* ================= ปักหมุดชั่วคราว (lat,long) ไม่บันทึกข้อมูล ================= */
+
+let tempPin = null;   // {marker, circle}
+
+function parseCoord(v){
+    if(v==null) return NaN;
+    return parseFloat(String(v).trim().replace(",", "."));
+}
+
+function showTempPin(){
+
+    const lat = parseCoord(document.getElementById("tpLat").value);
+    const lng = parseCoord(document.getElementById("tpLng").value);
+    const msg = document.getElementById("tpMsg");
+
+    if(isNaN(lat) || isNaN(lng) ||
+       lat < -90 || lat > 90 || lng < -180 || lng > 180){
+        msg.textContent = "กรอกพิกัดไม่ถูกต้อง (เช่น Lat 15.5258, Long 102.5433)";
+        msg.className = "tp-msg err";
+        return;
+    }
+
+    clearTempPin(true);
+
+    const marker = L.circleMarker([lat,lng],{
+        radius:9,
+        color:"#e65100",
+        fillColor:"#e65100",
+        fillOpacity:1,
+        weight:2
+    })
+    .bindPopup("หมุดชั่วคราว<br>"+lat.toFixed(6)+", "+lng.toFixed(6))
+    .bindTooltip("หมุดชั่วคราว",
+        {permanent:true, direction:"right", offset:[10,0], className:"temp-pin-label"})
+    .addTo(map);
+
+    const circle = L.circle([lat,lng],{
+        radius:RADIUS_M,
+        color:"#e65100",
+        fillColor:"#e65100",
+        fillOpacity:.12,
+        weight:2
+    }).addTo(map);
+
+    tempPin = {marker, circle};
+
+    document.getElementById("tpClearBtn").disabled = false;
+    msg.textContent = "แสดงหมุดและรัศมี 80 กม. แล้ว (ชั่วคราว ไม่บันทึก)";
+    msg.className = "tp-msg ok";
+
+    map.panTo([lat,lng]);
+    marker.openPopup();
+}
+
+function clearTempPin(silent){
+
+    if(tempPin){
+        map.removeLayer(tempPin.marker);
+        map.removeLayer(tempPin.circle);
+        tempPin = null;
+    }
+
+    document.getElementById("tpClearBtn").disabled = true;
+
+    if(!silent){
+        document.getElementById("tpMsg").textContent = "";
+        document.getElementById("tpMsg").className = "tp-msg";
+    }
+}
 
 
 /* ---------- เริ่มต้น ---------- */
