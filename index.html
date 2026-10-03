@@ -404,7 +404,65 @@ body.print-mode #toolbar button.go{
 body.print-mode #stage{
     position:relative;
     height:auto;
-    margin:56px auto 20px;
+    margin:56px 300px 20px 12px;
+}
+
+#printPanel{
+    display:none;
+}
+
+body.print-mode #printPanel{
+    display:block;
+    position:fixed;
+    top:52px;
+    right:8px;
+    bottom:8px;
+    width:280px;
+    overflow-y:auto;
+    z-index:3000;
+    background:#fff;
+    border-radius:8px;
+    padding:10px 12px;
+    box-sizing:border-box;
+    font-family:Arial, "Noto Sans Thai", sans-serif;
+    font-size:13px;
+    box-shadow:0 0 10px #000;
+}
+
+#printPanel hr{
+    border:0;
+    border-top:1px solid #ddd;
+    margin:8px 0;
+}
+
+#printPanel .pp-sec{
+    font-weight:bold;
+    margin:6px 0 2px;
+}
+
+#printPanel .pp-links a{
+    color:#1565c0;
+    cursor:pointer;
+    text-decoration:underline;
+    margin-right:8px;
+    font-size:12px;
+}
+
+#printPanel .pp-note{
+    font-size:11px;
+    color:#777;
+}
+
+#printPanel button{
+    margin:6px 0 0;
+    padding:6px;
+    font-size:12px;
+}
+
+body.print-mode .land-label{
+    font-size:5mm;
+    padding:.4mm 1.6mm;
+    border:.3mm solid #8d6e00;
 }
 
 body.print-mode #sheet{
@@ -580,7 +638,8 @@ body.print-mode #northArrow{
         background:#fff;
     }
 
-    body.print-mode #toolbar{
+    body.print-mode #toolbar,
+    body.print-mode #printPanel{
         display:none !important;
     }
 
@@ -680,7 +739,10 @@ body.print-mode #northArrow{
 
 <hr>
 
+<div class="row2">
 <button onclick="enterPrint(1)" style="background:#2e7d32">โหมดพิมพ์ A2</button>
+<button onclick="enterPrint(5)" style="background:#9e7c00">พิมพ์ : ที่ดินขาย</button>
+</div>
 
 <div id="info">พร้อมใช้งาน</div>
 
@@ -708,9 +770,12 @@ body.print-mode #northArrow{
 <button data-sheet="2" onclick="applySheet(2)">2 กลุ่ม A</button>
 <button data-sheet="3" onclick="applySheet(3)">3 กลุ่ม B</button>
 <button data-sheet="4" onclick="applySheet(4)">4 ทับซ้อนสาขา KC</button>
+<button data-sheet="5" onclick="applySheet(5)">5 ที่ดินประกาศขาย</button>
 <button class="go" onclick="doPrint()">พิมพ์ / บันทึก PDF</button>
 <button onclick="exitPrint()">ออก</button>
 </div>
+
+<div id="printPanel"></div>
 
 <div id="stage">
 <div id="sheet">
@@ -1061,6 +1126,7 @@ function ringBounds(it, km){
 
 function unionBounds(list, withRing){
     let b = null;
+    if(!list || !list.length) return null;
     list.forEach(it=>{
         const x = withRing ? ringBounds(it) : L.latLngBounds([it.lat,it.lng],[it.lat,it.lng]);
         b = b ? b.extend(x) : x;
@@ -1108,6 +1174,10 @@ const SHEETS = [
         districts:true,
         go:(main)=>{
             const A = main.filter(i=>CL_A.includes(i.name));
+            if(!A.length){
+                map.fitBounds(unionBounds(main,true),{padding:[30,30], animate:false});
+                return;
+            }
             // ระดับซูมของกรอบกลุ่ม A (เต็มวง) เป็นเพดาน
             const z0 = map.getBoundsZoom(unionBounds(A,true), false, L.point(60,60));
             // แล้วเลื่อนกรอบให้เห็นจุดของ ST, KN ด้วย โดยไม่ซูมออกเกินจำเป็น
@@ -1124,7 +1194,9 @@ const SHEETS = [
         go:(main)=>{
             const B = main.filter(i=>CL_B.includes(i.name));
             const st = main.filter(i=>i.name==="ST");
-            const b = unionBounds(B,true).extend(unionBounds(st,false));
+            let b = unionBounds(B,true);
+            const bs = unionBounds(st,false);
+            b = b ? (bs ? b.extend(bs) : b) : bs;
             map.fitBounds(b,{padding:[30,30], animate:false});
         }
     },
@@ -1136,8 +1208,25 @@ const SHEETS = [
         districts:true,
         go:(main)=>map.fitBounds(unionBounds(main,false),
                     {padding:[70,70], animate:false})
+    },
+    {
+        title:"ที่ดินประกาศขาย พร้อมวงรัศมี 80 กม.",
+        sub:"วงเส้นประสีเหลือง = รัศมี 80 กม. ของแต่ละแปลง • จุดสีจาง = สาขา KC / พื้นที่เป้าหมายที่อยู่ในกรอบ",
+        land:true,
+        main:i=>i.group==="land",
+        ring:i=>i.group==="land",
+        districts:true,
+        go:(main)=>map.fitBounds(unionBounds(main,true),
+                    {padding:[30,30], animate:false})
     }
 ];
+
+// สถานะเปิด/ปิดหมุดและวง แยกตามแผ่น (จำไว้จนกว่าจะรีเฟรชหน้า)
+const PS = {};
+function sheetState(n){
+    return PS[n] || (PS[n] = {show:new Map(), ring:new Map()});
+}
+let autoFit = true;
 
 let printMode = false;
 let curSheet = 1;
@@ -1145,6 +1234,7 @@ let saved = null;
 
 function labelText(it){
     if(it.group==="station") return "KC "+it.name;
+    if(it.group==="land") return "ขาย "+it.no+". "+it.name;
     return it.no+". "+it.name;
 }
 
@@ -1159,7 +1249,7 @@ function qrSvg(text){
 }
 
 function fitScreen(){
-    const s = Math.min((window.innerWidth-24)/SHEET_W,
+    const s = Math.min((window.innerWidth-24-300)/SHEET_W,
                        (window.innerHeight-56-20)/SHEET_H);
     const sc = Math.max(.2, Math.min(s,1));
     const sheet = document.getElementById("sheet");
@@ -1231,12 +1321,13 @@ function exitPrint(){
     refreshAll();
 }
 
-function applySheet(n){
+function applySheet(n, keepView){
 
     if(!printMode) return;
 
     curSheet = n;
     const S = SHEETS[n-1];
+    const st = sheetState(n);
 
     document.querySelectorAll("#toolbar button[data-sheet]").forEach(b=>{
         b.classList.toggle("active", +b.dataset.sheet===n);
@@ -1245,17 +1336,26 @@ function applySheet(n){
     showLabels = true;
     showRadiusAll = true;
 
-    // 1) เลือกจุดหลักของแผ่นนี้
+    // 1) จุดหลักของแผ่นนี้ (ผู้ใช้เปิด/ปิดหมุดและวงได้จากแผงด้านขวา)
     items.forEach(it=>{
+
         it.ctx = false;
-        if(it.group==="land"){ it.show = false; it.ring = false; return; }
-        it.show = !!S.main(it);
-        it.ring = it.show && !!S.ring(it);
-        it.pcolor = PCOL[it.name] || it.color;
+        it.cand = false;
+        if(it.dead){ it.show = false; it.ring = false; return; }
+
+        const isLand = it.group==="land";
+        const cand = isLand ? !!(S.land && S.main(it)) : !S.land && !!S.main(it);
+
+        it.cand = cand;
+        it.ringDef = cand && !!S.ring(it);
+        it.show = cand && (st.show.has(it.id) ? st.show.get(it.id) : true);
+        it.ring = it.show && (st.ring.has(it.id) ? st.ring.get(it.id) : it.ringDef);
+
+        it.pcolor = isLand ? LAND_COLOR : (PCOL[it.name] || it.color);
         it.marker.setRadius(it.r0*1.5);
-        it.marker.setStyle({color:it.pcolor, fillColor:it.pcolor, fillOpacity:1});
-        it.circle.setStyle({color:it.pcolor, fillColor:it.pcolor,
-                            fillOpacity:.06, weight:2.5});
+        it.marker.setStyle({color:it.border||it.pcolor, fillColor:it.pcolor, fillOpacity:1});
+        it.circle.setStyle({color:isLand ? "#f9a825" : it.pcolor, fillColor:it.pcolor,
+                            fillOpacity:isLand ? .05 : .06, weight:isLand ? 3 : 2.5});
         it.marker.setTooltipContent(labelText(it));
     });
 
@@ -1273,22 +1373,97 @@ function applySheet(n){
     buildFooter(main);
     map.invalidateSize({animate:false});
     refreshAll();
-    S.go(main);
+    if(!keepView && main.length){
+        try{ S.go(main); }catch(err){ console.warn("จัดกรอบไม่สำเร็จ", err); }
+    }
 
-    // 4) จุดอื่นที่บังเอิญอยู่ในกรอบ แสดงเป็นจุดอ้างอิง (ไม่มีวง)
+    // 4) จุดอื่นที่อยู่ในกรอบ = จุดอ้างอิงสีจาง (ไม่มีวง) ปิดทีละจุดได้
     const view = map.getBounds();
     items.forEach(it=>{
-        if(!it.show && it.group!=="land" && view.contains([it.lat,it.lng])){
-            it.show = true;
-            it.ring = false;
-            it.ctx = true;
-            it.marker.setStyle({fillOpacity:.45});
-        }
+        if(it.dead || it.cand || it.group==="land") return;
+        if(!view.contains([it.lat,it.lng])) return;
+        it.ctx = true;
+        it.show = st.show.has(it.id) ? st.show.get(it.id) : true;
+        it.ring = false;
+        it.marker.setStyle({fillOpacity:.45});
     });
     refreshAll();
     updateDistrictLabels(S.districts);
     placeLabels();
+    buildPrintPanel();
 }
+
+// แผงเลือกหมุด (แสดงเฉพาะบนจอ ไม่ถูกพิมพ์)
+function buildPrintPanel(){
+
+    const S = SHEETS[curSheet-1];
+    const box = document.getElementById("printPanel");
+    const cand = items.filter(i=>i.cand);
+    const ctx  = items.filter(i=>i.ctx);
+
+    const row = (it, withRing)=>
+        '<div class="pt">' +
+            '<label><input type="checkbox" data-p="show" data-id="'+it.id+'"'+(it.show?" checked":"")+'>' +
+            '<span class="dot" style="background:'+(it.pcolor||it.color)+(it.border?';border:1px solid '+it.border:'')+'"></span>' +
+            '<span>'+labelText(it)+'</span></label>' +
+            (withRing ? '<label class="ring"><input type="checkbox" data-p="ring" data-id="'+it.id+'"'+
+                (it.ring?" checked":"")+(it.show?"":" disabled")+'>วง</label>' : '') +
+        '</div>';
+
+    box.innerHTML =
+        '<b>แผ่นที่ '+curSheet+' : เลือกหมุด</b>' +
+        '<div class="pp-note">'+S.title+'</div>' +
+        '<hr>' +
+        '<div class="pp-sec">จุดหลัก ('+cand.filter(i=>i.show).length+'/'+cand.length+')</div>' +
+        '<div class="pp-links"><a data-pa="on">เปิดทั้งหมด</a><a data-pa="off">ปิดทั้งหมด</a></div>' +
+        (cand.map(it=>row(it,true)).join("") || '<div class="pp-note">ไม่มีจุด</div>') +
+        (ctx.length ?
+            '<hr><div class="pp-sec">จุดอ้างอิงในกรอบ (สีจาง)</div>' +
+            '<div class="pp-links"><a data-pa="ctxon">เปิดทั้งหมด</a><a data-pa="ctxoff">ปิดทั้งหมด</a></div>' +
+            ctx.map(it=>row(it,false)).join("") : '') +
+        '<hr>' +
+        '<label class="pt"><input type="checkbox" id="ppAutoFit"'+(autoFit?" checked":"")+'>' +
+            '<span>จัดกรอบแผนที่ใหม่ทุกครั้งที่เปิด/ปิดหมุด</span></label>' +
+        '<button data-pa="fit">จัดกรอบให้พอดีจุดที่เปิดอยู่</button>' +
+        '<button data-pa="reset" style="background:#757575">คืนค่าเริ่มต้นของแผ่นนี้</button>' +
+        '<div class="pp-note" style="margin-top:6px">ตัวเลือกในแผงนี้ไม่ถูกพิมพ์ • จำค่าแยกตามแผ่นจนกว่าจะรีเฟรชหน้า</div>';
+}
+
+document.getElementById("printPanel").addEventListener("change", e=>{
+
+    if(e.target.id==="ppAutoFit"){ autoFit = e.target.checked; return; }
+
+    const p = e.target.dataset.p;
+    if(!p) return;
+    const st = sheetState(curSheet);
+    const id = +e.target.dataset.id;
+
+    if(p==="show") st.show.set(id, e.target.checked);
+    if(p==="ring") st.ring.set(id, e.target.checked);
+
+    // ปิดจุดอ้างอิงไม่ต้องจัดกรอบใหม่ (กรอบไม่ได้คิดจากจุดอ้างอิง)
+    const isCtx = items[id] && items[id].ctx;
+    applySheet(curSheet, !autoFit || isCtx);
+});
+
+document.getElementById("printPanel").addEventListener("click", e=>{
+
+    const a = e.target.closest("[data-pa]");
+    if(!a) return;
+    const st = sheetState(curSheet);
+    const act = a.dataset.pa;
+
+    if(act==="on" || act==="off")
+        items.filter(i=>i.cand).forEach(i=>st.show.set(i.id, act==="on"));
+    if(act==="ctxon" || act==="ctxoff"){
+        items.filter(i=>i.ctx).forEach(i=>st.show.set(i.id, act==="ctxon"));
+        applySheet(curSheet, true);
+        return;
+    }
+    if(act==="reset"){ PS[curSheet] = null; delete PS[curSheet]; }
+
+    applySheet(curSheet, act==="fit" ? false : !autoFit);
+});
 
 // ชื่ออำเภอ (เฉพาะแผ่นที่ต้องการ) : วางที่กึ่งกลางอำเภอที่อยู่ในกรอบแผนที่
 let ampLayer = null;
@@ -1380,7 +1555,18 @@ function buildFooter(main){
 
         let nearTxt = "";
 
-        if(it.group==="target"){
+        if(it.group==="land"){
+            let best = null;
+            stationsOnly.forEach(s=>{
+                const d = hav(it,s);
+                if(!best || d<best.d) best = {d, s};
+            });
+            const area = (it.detail||"").match(/เนื้อที่\s*([\d\-]+)\s*ไร่/);
+            nearTxt = (area ? "เนื้อที่ "+area[1]+" ไร่ • " : "") +
+                (it.price ? "<b>"+it.price+" ลบ./ไร่</b>" : "") +
+                (best ? "<br>ห่าง KC "+best.s.name+" ~"+Math.round(best.d)+" กม." +
+                    (best.d <= RADIUS_M/1000 ? ' <span class="warn">(อยู่ในวงสาขา)</span>' : "") : "");
+        }else if(it.group==="target"){
             let best = null;
             stationsOnly.forEach(s=>{
                 const d = hav(it,s);
@@ -1400,8 +1586,9 @@ function buildFooter(main){
         card.innerHTML =
             '<div class="qr">'+qrSvg(url)+'</div>' +
             '<div>' +
-                '<div class="nm"><span class="no" style="background:'+(it.pcolor||it.color)+'">' +
-                    (it.group==="station" ? "KC" : it.no) +
+                '<div class="nm"><span class="no" style="background:'+(it.pcolor||it.color)+
+                    (it.group==="land" ? ';color:#000;border:.3mm solid #8d6e00' : '')+'">' +
+                    (it.group==="station" ? "KC" : (it.group==="land" ? "ข"+it.no : it.no)) +
                 '</span>' + it.name + '</div>' +
                 '<div class="mut">'+it.lat.toFixed(5)+', '+it.lng.toFixed(5)+'</div>' +
                 '<div>'+nearTxt+'</div>' +
@@ -1422,7 +1609,7 @@ function doPrint(){
     if(!printMode) return;
 
     // ตัด transform ตอนพิมพ์ แล้วให้แผนที่คำนวณขนาด/ซูมใหม่ ก่อนสั่งพิมพ์
-    applySheet(curSheet);
+    applySheet(curSheet, !autoFit);
 
     let done = false;
     const go = ()=>{
@@ -1441,7 +1628,7 @@ function doPrint(){
 window.addEventListener("beforeprint", ()=>{
     if(printMode){
         map.invalidateSize({animate:false});
-        applySheet(curSheet);
+        applySheet(curSheet, !autoFit);
     }
 });
 
@@ -1728,6 +1915,8 @@ function addLand(list){
         it.fill0 = .15;
         it.weight0 = 2.5;
         it.label0 = "ขาย "+no+". "+it.name;
+        it.price = d.price;
+        it.detail = d.detail;
 
         it.marker.setStyle({color:LAND_BORDER, weight:2.5, fillColor:LAND_COLOR, fillOpacity:1});
         it.circle.setStyle({color:"#f9a825", weight:2.5, fillColor:LAND_COLOR, fillOpacity:.15, dashArray:"8 6"});
