@@ -143,6 +143,151 @@ button.off{
     vertical-align:top;
 }
 
+.leaflet-popup-content{
+    margin:12px 14px;
+}
+
+.lp-head{
+    font-size:14px;
+    margin-bottom:4px;
+}
+
+.lp-gm{
+    display:inline-block;
+    margin:6px 0 8px;
+    padding:6px 10px;
+    background:#1a73e8;
+    color:#fff !important;
+    border-radius:5px;
+    text-decoration:none;
+    font-weight:bold;
+    font-size:13px;
+}
+
+.lp-tabs{
+    display:flex;
+    gap:4px;
+    border-bottom:2px solid #f9a825;
+    margin-bottom:6px;
+}
+
+.lp-tab{
+    flex:1;
+    width:auto;
+    margin:0;
+    padding:6px 4px;
+    font-size:12px;
+    background:#eee;
+    color:#333;
+    border-radius:5px 5px 0 0;
+}
+
+.lp-tab.on{
+    background:#f9a825;
+    color:#000;
+    font-weight:bold;
+}
+
+.lp-pane{
+    display:none;
+}
+
+.lp-pane.on{
+    display:block;
+}
+
+.lp-grid{
+    display:grid;
+    grid-template-columns:repeat(3,1fr);
+    gap:4px;
+}
+
+.lp-grid.one{
+    grid-template-columns:1fr;
+}
+
+.lp-thumb{
+    display:block;
+    width:100%;
+    aspect-ratio:4/3;
+    object-fit:cover;
+    border-radius:4px;
+    cursor:zoom-in;
+    background:#eee;
+    border:1px solid #ccc;
+    box-sizing:border-box;
+}
+
+.lp-grid.one .lp-thumb{
+    aspect-ratio:1.7;
+    object-fit:cover;
+    object-position:center top;
+}
+
+.lp-none{
+    font-size:12px;
+    color:#888;
+    padding:8px 0;
+}
+
+/* ---------- ดูภาพเต็มจอ ---------- */
+
+#lightbox{
+    display:none;
+    position:fixed;
+    inset:0;
+    z-index:5000;
+    background:rgba(0,0,0,.92);
+    color:#fff;
+    font-family:Arial, "Noto Sans Thai", sans-serif;
+}
+
+#lightbox.on{
+    display:flex;
+    flex-direction:column;
+}
+
+#lbBar{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    padding:8px 12px;
+    font-size:14px;
+}
+
+#lbBar .sp{
+    flex:1;
+}
+
+#lbBar a{
+    color:#90caf9;
+}
+
+#lightbox button{
+    width:auto;
+    margin:0;
+    background:rgba(255,255,255,.15);
+    font-size:20px;
+    padding:6px 14px;
+}
+
+#lbWrap{
+    flex:1;
+    min-height:0;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    gap:8px;
+    padding:0 8px 12px;
+}
+
+#lbImg{
+    max-width:calc(100% - 120px);
+    max-height:100%;
+    object-fit:contain;
+    background:#222;
+}
+
 .land-msg{
     font-size:12px;
     color:#777;
@@ -541,6 +686,21 @@ body.print-mode #northArrow{
 
 </div>
 
+
+<div id="lightbox">
+<div id="lbBar">
+<b id="lbTitle"></b>
+<span id="lbCount"></span>
+<span class="sp"></span>
+<a id="lbOpen" target="_blank" rel="noopener">เปิดไฟล์ต้นฉบับ</a>
+<button onclick="lbClose()" title="ปิด (Esc)">&times;</button>
+</div>
+<div id="lbWrap">
+<button onclick="lbStep(-1)" title="ก่อนหน้า (←)">&#8249;</button>
+<img id="lbImg" alt="">
+<button onclick="lbStep(1)" title="ถัดไป (→)">&#8250;</button>
+</div>
+</div>
 
 <div id="toolbar">
 <b>โหมดพิมพ์ A2</b>
@@ -1364,6 +1524,127 @@ const LAND_CSV_URL  = "https://docs.google.com/spreadsheets/d/"+LAND_SHEET_ID+"/
 const LAND_COLOR  = "#fdd835";   // เหลือง
 const LAND_BORDER = "#8d6e00";
 
+// รูปของแต่ละแปลง (อยู่ใน images/land/<เลข>/) จับคู่กับแปลงในชีตด้วยพิกัด (ห่างไม่เกิน 0.5 กม.)
+// plan = ภาพผังเมือง , photos = รูปสถานที่จริง และรายละเอียดที่ดิน
+const LAND_IMAGES = [
+    {dir:"1", lat:15.062059725235235, lng:102.01265022446766, plan:1, photos:6},
+    {dir:"2", lat:15.131416730530056, lng:101.72713982077228, plan:1, photos:4},
+    {dir:"3", lat:15.115659888641442, lng:101.72260872927325, plan:1, photos:4},
+    {dir:"4", lat:15.135031655479224, lng:101.72868242446921, plan:1, photos:3},
+    {dir:"5", lat:15.143832355658784, lng:101.73118628561498, plan:1, photos:4},
+    {dir:"6", lat:15.173130475741678, lng:102.3357303379634,  plan:1, photos:3}
+];
+
+function findLandImages(lat, lng){
+    let best = null;
+    LAND_IMAGES.forEach(g=>{
+        const d = hav({lat,lng}, g);
+        if(d<=0.5 && (!best || d<best.d)) best = {d, g};
+    });
+    if(!best) return null;
+    const g = best.g, base = "images/land/"+g.dir+"/";
+    const plan = [], photos = [];
+    for(let k=0;k<g.plan;k++){
+        const n = k ? "plan_"+(k+1) : "plan";
+        plan.push({full:base+n+".jpg", thumb:base+n+"_t.jpg"});
+    }
+    for(let k=1;k<=g.photos;k++)
+        photos.push({full:base+"photo_"+k+".jpg", thumb:base+"photo_"+k+"_t.jpg"});
+    return {plan, photos};
+}
+
+// เก็บชุดภาพของแต่ละแปลง เพื่อใช้กับ lightbox
+const galleries = {};
+
+function galleryHtml(key, title, imgs){
+
+    if(!imgs){
+        return '<div class="lp-none">ยังไม่มีรูปของแปลงนี้</div>';
+    }
+
+    const tab = (k, label, n)=>
+        '<button class="lp-tab'+(k==="plan"?" on":"")+'" data-g="'+key+'" data-tab="'+k+'">' +
+        label + ' ('+n+')</button>';
+
+    const pane = (k, list)=>{
+        galleries[key+"|"+k] = {title:title+" — "+(k==="plan"?"ผังเมือง":"สถานที่จริง / รายละเอียดที่ดิน"), list};
+        if(!list.length) return '<div class="lp-pane'+(k==="plan"?" on":"")+'" data-g="'+key+'" data-pane="'+k+'"><div class="lp-none">ไม่มีรูป</div></div>';
+        return '<div class="lp-pane'+(k==="plan"?" on":"")+'" data-g="'+key+'" data-pane="'+k+'">' +
+            '<div class="lp-grid'+(list.length===1?" one":"")+'">' +
+            list.map((im,i)=>'<img class="lp-thumb" loading="lazy" src="'+im.thumb+'" data-gal="'+key+"|"+k+'" data-i="'+i+'" alt="">').join("") +
+            '</div></div>';
+    };
+
+    return '<div class="lp-tabs">' +
+            tab("plan","1. ผังเมือง",imgs.plan.length) +
+            tab("photos","2. สถานที่จริง / รายละเอียด",imgs.photos.length) +
+        '</div>' +
+        pane("plan", imgs.plan) +
+        pane("photos", imgs.photos);
+}
+
+// คลิกแท็บ / รูปย่อในป๊อปอัป
+document.addEventListener("click", e=>{
+
+    const tb = e.target.closest(".lp-tab");
+    if(tb){
+        const box = tb.closest(".leaflet-popup-content") || document;
+        box.querySelectorAll('.lp-tab[data-g="'+tb.dataset.g+'"]').forEach(x=>x.classList.toggle("on", x===tb));
+        box.querySelectorAll('.lp-pane[data-g="'+tb.dataset.g+'"]').forEach(x=>x.classList.toggle("on", x.dataset.pane===tb.dataset.tab));
+        // ขนาดป๊อปอัปเปลี่ยน -> จัดตำแหน่ง/เลื่อนแผนที่ให้เห็นทั้งกล่อง
+        try{
+            const pp = map._popup;
+            if(pp){ pp._updateLayout(); pp._updatePosition(); pp._adjustPan(); }
+        }catch(err){}
+        return;
+    }
+
+    const th = e.target.closest(".lp-thumb");
+    if(th) lbOpen(th.dataset.gal, +th.dataset.i);
+});
+
+let lb = null;   // {gal, i}
+
+function lbShow(){
+    const g = galleries[lb.gal];
+    const im = g.list[lb.i];
+    document.getElementById("lbImg").src = im.full;
+    document.getElementById("lbOpen").href = im.full;
+    document.getElementById("lbTitle").textContent = g.title;
+    document.getElementById("lbCount").textContent = (lb.i+1)+" / "+g.list.length;
+}
+
+function lbOpen(gal, i){
+    if(!galleries[gal]) return;
+    lb = {gal, i};
+    lbShow();
+    document.getElementById("lightbox").classList.add("on");
+}
+
+function lbClose(){
+    document.getElementById("lightbox").classList.remove("on");
+    document.getElementById("lbImg").removeAttribute("src");
+    lb = null;
+}
+
+function lbStep(d){
+    if(!lb) return;
+    const n = galleries[lb.gal].list.length;
+    lb.i = (lb.i + d + n) % n;
+    lbShow();
+}
+
+document.addEventListener("keydown", e=>{
+    if(!lb) return;
+    if(e.key==="Escape") lbClose();
+    if(e.key==="ArrowRight") lbStep(1);
+    if(e.key==="ArrowLeft") lbStep(-1);
+});
+
+document.getElementById("lightbox").addEventListener("click", e=>{
+    if(e.target.id==="lightbox" || e.target.id==="lbWrap") lbClose();
+});
+
 // สำรองไว้ใช้เมื่อโหลดชีตไม่ได้ (ข้อมูล ณ 3 ต.ค. 2569)
 const LAND_FALLBACK = [
     {no:"1",name:"วงแหวนรอบเมือง 290",coord:"15.062059725235235, 102.01265022446766",tambon:"พุดซา",amphoe:"เมือง",detail:"ที่ดินติดถนนวงแหวนรอบเมือง 290  เนื้อที่ 6-2-69ไร่ หน้า 117ม ลึก 94ม  ตำบลสำโรง โนนไทย ไร่ละ 2.2ล",price:"2.2",zone:""},
@@ -1464,9 +1745,10 @@ function addLand(list){
 
         const gm = "https://www.google.com/maps?q="+lat+","+lng;
         const loc = [d.tambon && "ต."+d.tambon, d.amphoe && "อ."+d.amphoe].filter(Boolean).join(" ");
+        const gkey = "L"+it.id;
 
         it.marker.bindPopup(
-            '<b>ที่ดินประกาศขาย #'+esc(no)+' : '+esc(it.name)+'</b>' +
+            '<div class="lp-head"><b>ที่ดินประกาศขาย #'+esc(no)+' : '+esc(it.name)+'</b></div>' +
             '<table class="land-pop">' +
             (loc ? '<tr><td>ที่ตั้ง</td><td>'+esc(loc)+'</td></tr>' : '') +
             (d.price ? '<tr><td>ราคา</td><td><b>'+esc(d.price)+' ลบ./ไร่</b></td></tr>' : '') +
@@ -1475,9 +1757,10 @@ function addLand(list){
             (best ? '<tr><td>สาขาใกล้สุด</td><td>KC '+best.s.name+' ~'+Math.round(best.d)+' กม.' +
                 (best.d<=RADIUS_M/1000 ? ' <b style="color:#c62828">(อยู่ในวงสาขา)</b>' : '') + '</td></tr>' : '') +
             '</table>' +
-            '<small>'+lat.toFixed(5)+', '+lng.toFixed(5)+'</small> · ' +
-            '<a href="'+gm+'" target="_blank" rel="noopener">Google Maps</a>',
-            {maxWidth:300}
+            '<a class="lp-gm" href="'+gm+'" target="_blank" rel="noopener">&#128205; เปิดใน Google Maps</a> ' +
+            '<small>'+lat.toFixed(5)+', '+lng.toFixed(5)+'</small>' +
+            galleryHtml(gkey, "#"+no+" "+it.name, findLandImages(lat,lng)),
+            {maxWidth:340, minWidth:300}
         );
 
         ok++;
