@@ -126,6 +126,29 @@ button.off{
     box-shadow:none;
 }
 
+.land-label{
+    background:#fff59d;
+    border:1px solid #8d6e00;
+    border-radius:4px;
+    padding:1px 5px;
+    font-family:Arial, "Noto Sans Thai", sans-serif;
+    font-size:12px;
+    font-weight:bold;
+    color:#5d4300;
+    box-shadow:none;
+}
+
+.land-pop td{
+    padding:1px 4px;
+    vertical-align:top;
+}
+
+.land-msg{
+    font-size:12px;
+    color:#777;
+    margin-top:2px;
+}
+
 #info{
     font-size:12px;
     color:#555;
@@ -479,6 +502,18 @@ body.print-mode #northArrow{
 
 <hr>
 
+<div class="group-title">
+<span>ที่ดินประกาศขาย</span>
+<span class="mini">
+<a onclick="setGroup('land',true)">เปิดทั้งหมด</a>
+<a onclick="setGroup('land',false)">ปิดทั้งหมด</a>
+</span>
+</div>
+<div id="listLand"></div>
+<div class="land-msg"><span id="landMsg">กำลังโหลดจาก Google Sheet…</span> <a onclick="loadLand()" style="color:#1565c0;cursor:pointer;text-decoration:underline">โหลดใหม่</a></div>
+
+<hr>
+
 <button id="btnProvince" onclick="toggleGeo('province')">เปิด/ปิด จังหวัด</button>
 <button id="btnDistrict" onclick="toggleGeo('district')">เปิด/ปิด อำเภอ</button>
 
@@ -682,7 +717,7 @@ function buildList(group, elId){
     const box = document.getElementById(elId);
     box.innerHTML = "";
 
-    items.filter(i=>i.group===group).forEach(it=>{
+    items.filter(i=>i.group===group && !i.dead).forEach(it=>{
 
         const row = document.createElement("div");
         row.className = "pt";
@@ -691,7 +726,7 @@ function buildList(group, elId){
             '<label>' +
                 '<input type="checkbox" data-role="show" data-id="'+it.id+'">' +
                 '<span class="dot" style="background:'+it.color+'"></span>' +
-                '<span>'+(group==="station" ? "KC "+it.name : it.name)+'</span>' +
+                '<span>'+it.label0+'</span>' +
             '</label>' +
             '<label class="ring" title="เปิด/ปิด วงรัศมี 80 กม. ของจุดนี้">' +
                 '<input type="checkbox" data-role="ring" data-id="'+it.id+'">วง' +
@@ -734,9 +769,10 @@ function setBtn(id, on, text){
 }
 
 function updateInfo(){
-    const on = items.filter(i=>i.show).length;
+    const live = items.filter(i=>!i.dead);
+    const on = live.filter(i=>i.show).length;
     document.getElementById("info").innerHTML =
-        "แสดงอยู่ " + on + " / " + items.length + " จุด";
+        "แสดงอยู่ " + on + " / " + live.length + " จุด";
 }
 
 
@@ -753,13 +789,14 @@ function toggleAllRadius(){
 }
 
 function setGroup(group, on){
-    items.filter(i=>i.group===group).forEach(i=>i.show=on);
+    items.filter(i=>i.group===group && !i.dead).forEach(i=>i.show=on);
     refreshAll();
 }
 
 function showScenario(type){
 
     items.forEach(i=>{
+        if(i.dead) return;
         i.ring = true;
         if(type==="all")    i.show = true;
         if(type==="kc")     i.show = i.group==="station";
@@ -1018,9 +1055,9 @@ function exitPrint(){
         it.show = saved.items[k].show;
         it.ring = saved.items[k].ring;
         it.marker.setRadius(it.r0);
-        it.marker.setStyle({color:it.color, fillColor:it.color, fillOpacity:1});
+        it.marker.setStyle({color:it.border||it.color, fillColor:it.color, fillOpacity:1});
         it.circle.setStyle({color:it.color, fillColor:it.color,
-                            fillOpacity:it.fill0, weight:3});
+                            fillOpacity:it.fill0, weight:it.weight0||3});
         it.marker.setTooltipContent(it.label0);
         const tip = it.marker.getTooltip();
         tip.options.direction = "right";
@@ -1051,6 +1088,7 @@ function applySheet(n){
     // 1) เลือกจุดหลักของแผ่นนี้
     items.forEach(it=>{
         it.ctx = false;
+        if(it.group==="land"){ it.show = false; it.ring = false; return; }
         it.show = !!S.main(it);
         it.ring = it.show && !!S.ring(it);
         it.pcolor = PCOL[it.name] || it.color;
@@ -1080,7 +1118,7 @@ function applySheet(n){
     // 4) จุดอื่นที่บังเอิญอยู่ในกรอบ แสดงเป็นจุดอ้างอิง (ไม่มีวง)
     const view = map.getBounds();
     items.forEach(it=>{
-        if(!it.show && view.contains([it.lat,it.lng])){
+        if(!it.show && it.group!=="land" && view.contains([it.lat,it.lng])){
             it.show = true;
             it.ring = false;
             it.ctx = true;
@@ -1319,11 +1357,168 @@ function clearTempPin(silent){
 }
 
 
+/* ================= ที่ดินประกาศขาย (จาก Google Sheet) ================= */
+
+const LAND_SHEET_ID = "1PFoH3DtHw5p8WRTTZm0AU2H17cs4ZdFL7Zs5gs2G2WA";
+const LAND_CSV_URL  = "https://docs.google.com/spreadsheets/d/"+LAND_SHEET_ID+"/gviz/tq?tqx=out:csv&gid=0";
+const LAND_COLOR  = "#fdd835";   // เหลือง
+const LAND_BORDER = "#8d6e00";
+
+// สำรองไว้ใช้เมื่อโหลดชีตไม่ได้ (ข้อมูล ณ 3 ต.ค. 2569)
+const LAND_FALLBACK = [
+    {no:"1",name:"วงแหวนรอบเมือง 290",coord:"15.062059725235235, 102.01265022446766",tambon:"พุดซา",amphoe:"เมือง",detail:"ที่ดินติดถนนวงแหวนรอบเมือง 290  เนื้อที่ 6-2-69ไร่ หน้า 117ม ลึก 94ม  ตำบลสำโรง โนนไทย ไร่ละ 2.2ล",price:"2.2",zone:""},
+    {no:"2",name:"ทล.201",coord:"15.131416730530056, 101.72713982077228",tambon:"ตะเคียน",amphoe:"ด่านขุนทด",detail:"ที่ดินติดถนน ทล.201 กม.31 เนื้อที่ 7-1-78ไร่ หน้า 160เมตร ต.ตะเคียน ด่านขุนทด ผังเมืองสีเขียว ไร่ละ 2 ล้าน",price:"2",zone:""},
+    {no:"3",name:"ทล.201 กม.29",coord:"15.115659888641442, 101.72260872927325",tambon:"ตะเคียน",amphoe:"ด่านขุนทด",detail:"ที่ดินติดถนน ทล.201 กม.29 เนื้อที่ 8-1-28ไร่ หน้า 235เมตร ลึก 40-80ม. ต.ตะเคียน ด่านขุนทด ผังเมืองสีเขียว ไร่ละ 2 ล้าน",price:"2",zone:""},
+    {no:"4",name:"ทล.201 กม.31",coord:"15.135031655479224, 101.72868242446921",tambon:"ตะเคียน",amphoe:"ด่านขุนทด",detail:"ที่ดินติดถนน ทล.201 กม.31 เนื้อที่ 10-2-34ไร่ หน้า 157เมตร ลึก 138เมตร ต.ตะเคียน ด่านขุนทด ผังเมืองสีเขียว ไร่ละ 1 ล้าน",price:"1",zone:""},
+    {no:"5",name:"ทล.201 กม.32",coord:"15.143832355658784,101.73118628561498",tambon:"ตะเคียน",amphoe:"ด่านขุนทด",detail:"ที่ดินติดถนน ทล.201 กม.32 เนื้อที่ 7-1-20ไร่ หน้า 135เมตร ลึก 100เมตร ต.ตะเคียน ด่านขุนทด ผังเมืองสีเขียว ไร่ละ 1.3 ล้าน",price:"1.3",zone:""},
+    {no:"6",name:"มิตรภาพ184",coord:"15.173130475741678, 102.3357303379634",tambon:"ดอนชมพู",amphoe:"โนนสูง",detail:"ที่ดินติดถนนมิตรภาพ กม.184 เนื้อที่ 11-2-30ไร่ หน้า 83เมตร ลึก 175เมตร ต.ดอนชมพู โนนสูง ผังสีเขียว ไร่ละ 3.5 ล้าน (ด้านหน้าถมแล้ว )",price:"3.5",zone:""}
+];
+
+function parseCSV(text){
+    const rows = [];
+    let row = [], f = "", q = false;
+    for(let i=0;i<text.length;i++){
+        const c = text[i];
+        if(q){
+            if(c==='"'){
+                if(text[i+1]==='"'){ f+='"'; i++; }
+                else q = false;
+            }else f += c;
+        }else{
+            if(c==='"') q = true;
+            else if(c===','){ row.push(f); f=""; }
+            else if(c==='\n'){ row.push(f); rows.push(row); row=[]; f=""; }
+            else if(c!=='\r') f += c;
+        }
+    }
+    if(f!=="" || row.length){ row.push(f); rows.push(row); }
+    return rows;
+}
+
+// แปลงแถวชีต -> object โดยอ้างอิงชื่อหัวคอลัมน์ (ย้ายคอลัมน์ได้ไม่พัง)
+function csvToLand(text){
+    const rows = parseCSV(text).filter(r=>r.some(v=>v.trim()!==""));
+    if(rows.length<2) return [];
+    const h = rows[0].map(x=>x.trim());
+    const col = (...names)=>h.findIndex(x=>names.some(n=>x.indexOf(n)>=0));
+    const c = {
+        no:col("ลำดับ"), name:col("ชื่อ"), coord:col("พิกัด"),
+        tambon:col("ตำบล"), amphoe:col("อำเภอ"), detail:col("รายละเอียด"),
+        price:col("ราคา"), zone:col("ผังเมือง")
+    };
+    const g = (r,k)=> c[k]>=0 ? (r[c[k]]||"").trim() : "";
+    return rows.slice(1).map(r=>({
+        no:g(r,"no"), name:g(r,"name"), coord:g(r,"coord"),
+        tambon:g(r,"tambon"), amphoe:g(r,"amphoe"), detail:g(r,"detail"),
+        price:g(r,"price"), zone:g(r,"zone")
+    }));
+}
+
+function esc(s){
+    return String(s).replace(/[&<>"]/g, ch=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+}
+
+function clearLand(){
+    items.filter(i=>i.group==="land").forEach(it=>{
+        if(map.hasLayer(it.marker)) map.removeLayer(it.marker);
+        if(map.hasLayer(it.circle)) map.removeLayer(it.circle);
+        it.dead = true;
+        it.show = false;
+    });
+}
+
+function addLand(list){
+
+    clearLand();
+    const stationsOnly = items.filter(i=>i.group==="station");
+    let ok = 0, bad = [];
+
+    list.forEach((d,k)=>{
+
+        const m = String(d.coord).match(/(-?\d+(?:\.\d+)?)\s*[, ]\s*(-?\d+(?:\.\d+)?)/);
+        if(!m){ if(d.name||d.coord) bad.push(d.no||k+1); return; }
+        const lat = +m[1], lng = +m[2];
+
+        const it = makeItem("land", d.name || ("แปลง "+(k+1)), lat, lng, LAND_COLOR, 8);
+        const no = d.no || String(k+1);
+
+        it.no = no;
+        it.border = LAND_BORDER;
+        it.fill0 = .15;
+        it.weight0 = 2.5;
+        it.label0 = "ขาย "+no+". "+it.name;
+
+        it.marker.setStyle({color:LAND_BORDER, weight:2.5, fillColor:LAND_COLOR, fillOpacity:1});
+        it.circle.setStyle({color:"#f9a825", weight:2.5, fillColor:LAND_COLOR, fillOpacity:.15, dashArray:"8 6"});
+
+        it.marker.unbindTooltip();
+        it.marker.bindTooltip(it.label0,
+            {permanent:true, direction:"right", offset:[10,0], className:"land-label"});
+
+        // สาขา KC ที่ใกล้ที่สุด
+        let best = null;
+        stationsOnly.forEach(s=>{
+            const dd = hav(it,s);
+            if(!best || dd<best.d) best = {d:dd, s};
+        });
+
+        const gm = "https://www.google.com/maps?q="+lat+","+lng;
+        const loc = [d.tambon && "ต."+d.tambon, d.amphoe && "อ."+d.amphoe].filter(Boolean).join(" ");
+
+        it.marker.bindPopup(
+            '<b>ที่ดินประกาศขาย #'+esc(no)+' : '+esc(it.name)+'</b>' +
+            '<table class="land-pop">' +
+            (loc ? '<tr><td>ที่ตั้ง</td><td>'+esc(loc)+'</td></tr>' : '') +
+            (d.price ? '<tr><td>ราคา</td><td><b>'+esc(d.price)+' ลบ./ไร่</b></td></tr>' : '') +
+            (d.zone ? '<tr><td>ผังเมือง</td><td>'+esc(d.zone)+'</td></tr>' : '') +
+            (d.detail ? '<tr><td>รายละเอียด</td><td>'+esc(d.detail)+'</td></tr>' : '') +
+            (best ? '<tr><td>สาขาใกล้สุด</td><td>KC '+best.s.name+' ~'+Math.round(best.d)+' กม.' +
+                (best.d<=RADIUS_M/1000 ? ' <b style="color:#c62828">(อยู่ในวงสาขา)</b>' : '') + '</td></tr>' : '') +
+            '</table>' +
+            '<small>'+lat.toFixed(5)+', '+lng.toFixed(5)+'</small> · ' +
+            '<a href="'+gm+'" target="_blank" rel="noopener">Google Maps</a>',
+            {maxWidth:300}
+        );
+
+        ok++;
+    });
+
+    buildList("land","listLand");
+    refreshAll();
+    return {ok, bad};
+}
+
+function loadLand(){
+
+    const msg = document.getElementById("landMsg");
+    msg.textContent = "กำลังโหลดจาก Google Sheet…";
+
+    fetch(LAND_CSV_URL + "&t=" + Date.now())
+    .then(r=>{
+        if(!r.ok) throw new Error(r.status);
+        return r.text();
+    })
+    .then(t=>{
+        const list = csvToLand(t);
+        if(!list.length) throw new Error("ชีตว่าง");
+        const r = addLand(list);
+        msg.textContent = "โหลดจากชีตแล้ว " + r.ok + " แปลง" +
+            (r.bad.length ? " (พิกัดผิด: ลำดับ "+r.bad.join(", ")+")" : "");
+    })
+    .catch(err=>{
+        console.warn("โหลดชีตที่ดินไม่สำเร็จ:", err);
+        const r = addLand(LAND_FALLBACK);
+        msg.textContent = "โหลดชีตไม่ได้ ใช้ข้อมูลสำรอง " + r.ok + " แปลง";
+    });
+}
+
+
 /* ---------- เริ่มต้น ---------- */
 
 buildList("station","listStation");
 buildList("target","listTarget");
 showScenario("all");
+loadLand();
 
 </script>
 
